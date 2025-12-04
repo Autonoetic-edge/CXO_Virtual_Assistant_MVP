@@ -1,72 +1,74 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Calendar as CalendarIcon,
   Clock,
   AlertCircle,
   TrendingUp,
-  Mic,
-  Search,
+  CheckCircle,
+  Bell,
+  Sparkles,
+  RefreshCw,
+  ChevronRight,
+  ListTodo,
+  Brain,
 } from 'lucide-react';
 import VoiceInput from '../components/VoiceInput';
 import { useAuthStore } from '../store/authStore';
-import api from '../services/api';
+import { workflowService } from '../services/workflowService';
+import { taskService } from '../services/taskService';
+import { reminderService } from '../services/reminderService';
+import { memoryService } from '../services/memoryService';
 import { toast } from 'react-toastify';
 
 const Dashboard = () => {
   const { user } = useAuthStore();
   const [query, setQuery] = useState('');
-  const [briefing, setBriefing] = useState(null);
+  const [workflow, setWorkflow] = useState(null);
+  const [todayTasks, setTodayTasks] = useState([]);
+  const [upcomingReminders, setUpcomingReminders] = useState([]);
+  const [upcomingMemories, setUpcomingMemories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    fetchBriefing();
+    loadDashboardData();
   }, []);
 
-  const fetchBriefing = async () => {
+  const loadDashboardData = async () => {
     try {
       setLoading(true);
-      // This will be implemented when briefing endpoints are ready
-      const mockBriefing = {
-        date: new Date().toISOString().split('T')[0],
-        priorities: [
-          'Prepare for Q4 Budget Review at 10:00 AM',
-          'Review marketing budget request ($500K)',
-          'Finalize Board Meeting presentation (Friday 2 PM)',
-        ],
-        schedule: {
-          total_meetings: 5,
-          meetings: [
-            {
-              id: '1',
-              title: 'Team Standup',
-              start_time: '2024-01-15T09:30:00',
-              preparation_status: 'prepared',
-            },
-            {
-              id: '2',
-              title: 'Q4 Budget Review',
-              start_time: '2024-01-15T10:00:00',
-              preparation_status: 'not_prepared',
-            },
-          ],
-        },
-        alerts: [
-          {
-            type: 'warning',
-            message: '2 meetings need preparation',
-          },
-        ],
-        stats: {
-          open_approvals: 3,
-        },
-      };
-      setBriefing(mockBriefing);
+      const [workflowRes, tasksRes, remindersRes, memoriesRes] = await Promise.allSettled([
+        workflowService.getTodayWorkflow(),
+        taskService.getToday(),
+        reminderService.getUpcoming(24),
+        memoryService.getUpcomingReminders(7),
+      ]);
+
+      if (workflowRes.status === 'fulfilled') {
+        setWorkflow(workflowRes.value.data);
+      }
+      if (tasksRes.status === 'fulfilled') {
+        setTodayTasks(tasksRes.value.data || []);
+      }
+      if (remindersRes.status === 'fulfilled') {
+        setUpcomingReminders(remindersRes.value.data || []);
+      }
+      if (memoriesRes.status === 'fulfilled') {
+        setUpcomingMemories(memoriesRes.value.data || []);
+      }
     } catch (error) {
-      console.error('Error fetching briefing:', error);
-      toast.error('Failed to load briefing');
+      console.error('Error loading dashboard:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboardData();
+    setRefreshing(false);
+    toast.success('Dashboard refreshed!');
   };
 
   const handleQuerySubmit = async (e) => {
@@ -74,10 +76,16 @@ const Dashboard = () => {
     if (!query.trim()) return;
 
     try {
-      toast.info(`Processing query: "${query}"`);
+      // Check if it's a "remember" command
+      if (query.toLowerCase().startsWith('remember ') || query.toLowerCase().includes('remember that')) {
+        await memoryService.remember(query);
+        toast.success('Got it! I\'ll remember that.');
+      } else {
+        toast.info(`Processing: "${query}"`);
+      }
       setQuery('');
     } catch (error) {
-      toast.error('Failed to process query');
+      toast.error('Failed to process request');
     }
   };
 
@@ -85,21 +93,40 @@ const Dashboard = () => {
     setQuery(transcript);
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const content = workflow?.content;
+
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
-          Good morning, {user?.first_name}!
-        </h1>
-        <p className="text-gray-600 mt-1">
-          {new Date().toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {getGreeting()}, {user?.first_name}!
+          </h1>
+          <p className="text-gray-600 mt-1">
+            {new Date().toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </p>
+        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-primary transition"
+        >
+          <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+          Refresh
+        </button>
       </div>
 
       {/* Voice/Text Query Input */}
@@ -107,7 +134,7 @@ const Dashboard = () => {
         <div className="flex items-center gap-4">
           <form onSubmit={handleQuerySubmit} className="flex-1 flex gap-2">
             <div className="flex-1 relative">
-              <Search
+              <Brain
                 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
                 size={20}
               />
@@ -115,7 +142,7 @@ const Dashboard = () => {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Ask me anything... (e.g., 'What meetings do I have tomorrow?')"
+                placeholder="Ask anything or say 'Remember...' to save a memory"
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
               />
             </div>
@@ -123,7 +150,7 @@ const Dashboard = () => {
               type="submit"
               className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary-600 transition"
             >
-              Ask
+              Go
             </button>
           </form>
           <VoiceInput
@@ -137,128 +164,229 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Alerts */}
-      {briefing?.alerts && briefing.alerts.length > 0 && (
-        <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded">
-          <div className="flex items-start">
-            <AlertCircle className="text-amber-400 mt-0.5" size={20} />
-            <div className="ml-3">
-              {briefing.alerts.map((alert, index) => (
-                <p key={index} className="text-amber-800">
-                  {alert.message}
-                </p>
-              ))}
+      {/* Daily Briefing Summary */}
+      {content && (
+        <div className="bg-gradient-to-r from-primary-50 to-purple-50 rounded-lg p-6 border border-primary-100">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-white rounded-lg shadow-sm">
+              <Sparkles className="text-primary" size={24} />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-lg text-gray-800">{content.greeting}</h2>
+              <p className="text-gray-600 mt-1">{content.summary}</p>
+              {content.motivationalMessage && (
+                <p className="text-primary mt-3 italic">💡 {content.motivationalMessage}</p>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Top Priorities */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <TrendingUp className="text-primary" />
-          Top 3 Priorities
-        </h2>
-        {briefing?.priorities ? (
-          <ol className="space-y-2">
-            {briefing.priorities.map((priority, index) => (
-              <li key={index} className="flex items-start gap-2">
-                <span className="font-bold text-primary">{index + 1}.</span>
-                <span>{priority}</span>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="text-gray-500">Loading priorities...</p>
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Today's Tasks */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b flex items-center justify-between">
+            <h2 className="font-semibold flex items-center gap-2">
+              <ListTodo className="text-primary" size={20} />
+              Today's Tasks ({todayTasks.length})
+            </h2>
+            <Link to="/tasks" className="text-primary text-sm hover:underline flex items-center gap-1">
+              View all <ChevronRight size={14} />
+            </Link>
+          </div>
+          <div className="p-4">
+            {todayTasks.length > 0 ? (
+              <div className="space-y-3">
+                {todayTasks.slice(0, 5).map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:border-primary transition"
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full ${
+                        task.status === 'completed'
+                          ? 'bg-green-500'
+                          : task.priority === 'urgent'
+                          ? 'bg-red-500'
+                          : task.priority === 'high'
+                          ? 'bg-orange-500'
+                          : 'bg-blue-500'
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <p className={task.status === 'completed' ? 'line-through text-gray-400' : ''}>
+                        {task.title}
+                      </p>
+                      {task.due_time && (
+                        <p className="text-xs text-gray-500">{task.due_time}</p>
+                      )}
+                    </div>
+                    {task.status === 'completed' && (
+                      <CheckCircle size={16} className="text-green-500" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-4">No tasks for today. Enjoy!</p>
+            )}
+          </div>
+        </div>
+
+        {/* Upcoming Reminders */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b flex items-center justify-between">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Bell className="text-primary" size={20} />
+              Upcoming Reminders ({upcomingReminders.length})
+            </h2>
+          </div>
+          <div className="p-4">
+            {upcomingReminders.length > 0 ? (
+              <div className="space-y-3">
+                {upcomingReminders.slice(0, 5).map((reminder) => (
+                  <div
+                    key={reminder.id}
+                    className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-100 rounded-lg"
+                  >
+                    <Clock size={18} className="text-amber-600 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-800">{reminder.title}</p>
+                      <p className="text-sm text-gray-500">
+                        {new Date(reminder.remind_at).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-4">No upcoming reminders</p>
+            )}
+          </div>
+        </div>
+
+        {/* Events from Workflow */}
+        {content?.events && content.events.length > 0 && (
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-4 border-b flex items-center justify-between">
+              <h2 className="font-semibold flex items-center gap-2">
+                <CalendarIcon className="text-primary" size={20} />
+                Today's Events ({content.events.length})
+              </h2>
+              <Link to="/calendar" className="text-primary text-sm hover:underline flex items-center gap-1">
+                View all <ChevronRight size={14} />
+              </Link>
+            </div>
+            <div className="p-4 space-y-3">
+              {content.events.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:border-primary transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <Clock size={18} className="text-gray-400" />
+                    <div>
+                      <p className="font-medium">{event.title}</p>
+                      <p className="text-sm text-gray-500">
+                        {new Date(event.start_time).toLocaleTimeString('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
+                        {event.location && ` • ${event.location}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Important Dates (from Memories) */}
+        {upcomingMemories.length > 0 && (
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-4 border-b">
+              <h2 className="font-semibold flex items-center gap-2">
+                <AlertCircle className="text-primary" size={20} />
+                Coming Up (Don't Forget!)
+              </h2>
+            </div>
+            <div className="p-4 space-y-3">
+              {upcomingMemories.slice(0, 5).map((memory) => (
+                <div
+                  key={memory.id}
+                  className="flex items-start gap-3 p-3 bg-purple-50 border border-purple-100 rounded-lg"
+                >
+                  <span className="text-xl">
+                    {memory.memory_type === 'birthday'
+                      ? '🎂'
+                      : memory.memory_type === 'anniversary'
+                      ? '💍'
+                      : '📌'}
+                  </span>
+                  <div>
+                    <p className="font-medium text-gray-800">{memory.title}</p>
+                    {memory.reminder_date && (
+                      <p className="text-sm text-gray-500">
+                        {new Date(memory.reminder_date).toLocaleDateString('en-US', {
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Today's Schedule */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <CalendarIcon className="text-primary" />
-          Today's Schedule ({briefing?.schedule?.total_meetings || 0} meetings)
-        </h2>
-        {briefing?.schedule?.meetings && briefing.schedule.meetings.length > 0 ? (
-          <div className="space-y-3">
-            {briefing.schedule.meetings.map((meeting) => (
+      {/* Action Items */}
+      {content?.actionItems && content.actionItems.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <TrendingUp className="text-primary" size={20} />
+            Recommended Actions
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {content.actionItems.map((item, index) => (
               <div
-                key={meeting.id}
-                className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-primary transition"
+                key={index}
+                className="p-4 bg-gray-50 rounded-lg border-l-4 border-primary"
               >
-                <div className="flex items-center gap-3">
-                  <Clock size={18} className="text-gray-400" />
-                  <div>
-                    <p className="font-medium">{meeting.title}</p>
-                    <p className="text-sm text-gray-500">
-                      {new Date(meeting.start_time).toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    meeting.preparation_status === 'prepared'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}
-                >
-                  {meeting.preparation_status === 'prepared'
-                    ? '✓ Prepared'
-                    : '⚠ Needs Prep'}
-                </span>
+                <p className="text-gray-700">{item}</p>
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-gray-500">No meetings scheduled for today</p>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Open Approvals</p>
-              <p className="text-2xl font-bold text-primary">
-                {briefing?.stats?.open_approvals || 0}
-              </p>
-            </div>
-            <div className="p-3 bg-primary-50 rounded-lg">
-              <AlertCircle className="text-primary" size={24} />
-            </div>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-gray-600 text-sm">Tasks Today</p>
+          <p className="text-2xl font-bold text-primary">{todayTasks.length}</p>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Revenue MTD</p>
-              <p className="text-2xl font-bold text-primary">
-                {briefing?.stats?.revenue_mtd || '$2.3M'}
-              </p>
-            </div>
-            <div className="p-3 bg-green-50 rounded-lg">
-              <TrendingUp className="text-green-600" size={24} />
-            </div>
-          </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-gray-600 text-sm">Completed</p>
+          <p className="text-2xl font-bold text-green-600">
+            {todayTasks.filter((t) => t.status === 'completed').length}
+          </p>
         </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm">Burn Rate</p>
-              <p className="text-2xl font-bold text-primary">
-                {briefing?.stats?.burn_rate || '$180K/day'}
-              </p>
-            </div>
-            <div className="p-3 bg-amber-50 rounded-lg">
-              <Clock className="text-amber-600" size={24} />
-            </div>
-          </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-gray-600 text-sm">Reminders</p>
+          <p className="text-2xl font-bold text-amber-600">{upcomingReminders.length}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <p className="text-gray-600 text-sm">Events</p>
+          <p className="text-2xl font-bold text-purple-600">{content?.events?.length || 0}</p>
         </div>
       </div>
     </div>

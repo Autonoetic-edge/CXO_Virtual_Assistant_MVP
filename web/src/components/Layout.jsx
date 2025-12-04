@@ -5,6 +5,8 @@ import {
   Calendar,
   Users,
   FileText,
+  CheckSquare,
+  Link as LinkIcon,
   Settings,
   LogOut,
   Menu,
@@ -23,6 +25,8 @@ const Layout = () => {
     { name: 'Calendar', path: '/calendar', icon: Calendar },
     { name: 'Meetings', path: '/meetings', icon: Users },
     { name: 'Briefings', path: '/briefings', icon: FileText },
+    { name: 'Tasks', path: '/tasks', icon: CheckSquare },
+    { name: 'Integrations', path: '/integrations', icon: LinkIcon },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
 
