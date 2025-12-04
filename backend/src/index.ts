@@ -10,7 +10,7 @@ import logger from './utils/logger';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
 
-// Import routes (will be created next)
+// Import routes
 import authRoutes from './api/routes/auth';
 import userRoutes from './api/routes/user';
 import calendarRoutes from './api/routes/calendar';
@@ -19,6 +19,12 @@ import meetingRoutes from './api/routes/meeting';
 import queryRoutes from './api/routes/query';
 import briefingRoutes from './api/routes/briefing';
 import schedulingRoutes from './api/routes/scheduling';
+import onboardingRoutes from './api/routes/onboarding';
+import memoryRoutes from './api/routes/memory';
+import reminderRoutes from './api/routes/reminder';
+import taskRoutes from './api/routes/task';
+import integrationRoutes from './api/routes/integration';
+import workflowRoutes from './api/routes/workflow';
 
 const app: Application = express();
 
@@ -54,6 +60,12 @@ app.use('/api/v1/meetings', meetingRoutes);
 app.use('/api/v1/queries', queryRoutes);
 app.use('/api/v1/briefings', briefingRoutes);
 app.use('/api/v1/scheduling', schedulingRoutes);
+app.use('/api/v1/onboarding', onboardingRoutes);
+app.use('/api/v1/memories', memoryRoutes);
+app.use('/api/v1/reminders', reminderRoutes);
+app.use('/api/v1/tasks', taskRoutes);
+app.use('/api/v1/integrations', integrationRoutes);
+app.use('/api/v1/workflows', workflowRoutes);
 
 // 404 handler
 app.use(notFound);
